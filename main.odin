@@ -9,8 +9,8 @@ import rl "vendor:raylib"
 SCREEN_WIDTH :: 1024
 SCREEN_HEIGHT :: 768
 GRAVITY :: 25
-JUMP_STRENGTH :: 600
-SPEED :: 50
+JUMP_STRENGTH :: 800
+SPEED :: 150
 BLOCK_WIDTH :: 32
 
 Player :: struct {
@@ -26,6 +26,7 @@ BlockType :: enum {
 }
 
 level: [32 * 24]BlockType
+camera: rl.Camera2D
 player: Player
 
 main :: proc() {
@@ -52,6 +53,12 @@ setup :: proc() {
 		colour = {245, 125, 74, 255},
 	}
 
+	camera = {
+		target = player.pos_px,
+		offset = {SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2},
+		zoom   = 1,
+	}
+
 	gen_level()
 }
 
@@ -60,6 +67,8 @@ process_input :: proc() {
 }
 
 update :: proc() {
+	camera.target = clamp_camera(player.pos_px)
+
 	dt := rl.GetFrameTime()
 
 	player.vel.y += GRAVITY
@@ -75,7 +84,7 @@ render :: proc() {
 	rl.BeginDrawing()
 	rl.ClearBackground({50, 51, 83, 255})
 
-	// rl.BeginMode2D(camera)
+	rl.BeginMode2D(camera)
 
 	// Draw level
 	for b, i in level {
@@ -97,7 +106,7 @@ render :: proc() {
 	// Draw player
 	rl.DrawRectangleV(player.pos_px, player.size, player.colour)
 
-	// rl.EndMode2D()
+	rl.EndMode2D()
 
 	draw_ui()
 
@@ -136,4 +145,22 @@ gen_level :: proc() {
 			level[i32(y) * (SCREEN_WIDTH / BLOCK_WIDTH) + x] = .WALL
 		}
 	}
+}
+
+clamp_camera :: proc(vec: rl.Vector2) -> rl.Vector2 {
+	half_window_width := SCREEN_WIDTH / 2.0 / camera.zoom
+	half_window_height := SCREEN_HEIGHT / 2.0 / camera.zoom
+	minX: f32 = half_window_width
+	minY: f32 = half_window_height
+	maxX: f32 = SCREEN_WIDTH - half_window_width
+	maxY: f32 = SCREEN_HEIGHT - half_window_height
+
+	res_vec := vec
+
+	if (res_vec.x < minX) do res_vec.x = minX
+	if (res_vec.y < minY) do res_vec.y = minY
+	if (res_vec.x > maxX) do res_vec.x = maxX
+	if (res_vec.y > maxY) do res_vec.y = maxY
+
+	return res_vec
 }
