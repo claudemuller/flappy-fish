@@ -227,7 +227,7 @@ check_collisions :: proc() {
 			return
 		}
 
-		load_level(game_state + GameState(1))
+		load_level(GameState(int(game_state) + 1))
 		return
 	}
 
