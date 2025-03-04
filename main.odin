@@ -23,6 +23,12 @@ Player :: struct {
 	colour: rl.Color,
 }
 
+Level :: struct {
+	speed:        f32,
+	level_length: f32,
+	num_walls:    i32,
+}
+
 BlockType :: enum {
 	BLANK,
 	WALL,
@@ -72,6 +78,12 @@ setup :: proc() {
 		zoom   = 1,
 	}
 
+	level1 := Level {
+		speed        = 1,
+		level_length = 2,
+		num_walls    = 5,
+	}
+
 	gen_level()
 }
 
@@ -112,7 +124,7 @@ render :: proc() {
 
 	rl.BeginMode2D(camera)
 
-	if game_state >= .LEVEL1 {
+	if game_state >= .GAME_OVER {
 		// Draw level
 		for b, i in level {
 			grid_x := i32(i % (SCREEN_WIDTH / BLOCK_WIDTH))
@@ -123,7 +135,7 @@ render :: proc() {
 			if b == .WALL {
 				rl.DrawRectangle(x, y, BLOCK_WIDTH, BLOCK_WIDTH, {77, 101, 180, 255})
 			} else {
-				rl.DrawRectangle(x, y, BLOCK_WIDTH, BLOCK_WIDTH, {0, 101, 180, 255})
+				// rl.DrawRectangle(x, y, BLOCK_WIDTH, BLOCK_WIDTH, {0, 101, 180, 255})
 			}
 
 			rl.DrawRectangleLines(x, y, BLOCK_WIDTH, BLOCK_WIDTH, rl.DARKGRAY)
@@ -156,6 +168,23 @@ check_collisions :: proc() {
 	   player.pos_px.y < 0 ||
 	   player.pos_px.y > SCREEN_HEIGHT - player.size.y {
 		game_state = .GAME_OVER
+		return
+	}
+
+	// TODO:(lukefilewalker) don't iterate over all blocks just for wall blocks
+	for block, i in level {
+		if block == .WALL {
+			grid_x := f32(i % (SCREEN_WIDTH / BLOCK_WIDTH))
+			grid_y := f32(i / (SCREEN_WIDTH / BLOCK_WIDTH))
+			x := grid_x * BLOCK_WIDTH
+			y := grid_y * BLOCK_WIDTH
+			if rl.CheckCollisionRecs(
+				rl.Rectangle{player.pos_px.x, player.pos_px.y, player.size.x, player.size.y},
+				rl.Rectangle{x, y, BLOCK_WIDTH, BLOCK_WIDTH},
+			) {
+				game_state = .GAME_OVER
+			}
+		}
 	}
 }
 
@@ -213,7 +242,9 @@ draw_game_over :: proc() {
 	w2 := rl.MeasureText(str2, FONT_SIZE)
 	str3 := fmt.ctprint("Press <space> to start playing")
 	w3 := rl.MeasureText(str3, FONT_SIZE)
-	total_height: i32 = FONT_SIZE * 3
+	str4 := fmt.ctprint("Press <escape> to quit")
+	w4 := rl.MeasureText(str4, FONT_SIZE)
+	total_height: i32 = FONT_SIZE * 4 + 10
 	rl.DrawText(
 		str1,
 		SCREEN_WIDTH / 2 - w1 / 2,
@@ -231,7 +262,14 @@ draw_game_over :: proc() {
 	rl.DrawText(
 		str3,
 		SCREEN_WIDTH / 2 - w3 / 2,
-		SCREEN_HEIGHT / 2 - total_height + header_size + FONT_SIZE * 2,
+		SCREEN_HEIGHT / 2 - total_height + header_size + FONT_SIZE * 2 + 40,
+		FONT_SIZE,
+		rl.RAYWHITE,
+	)
+	rl.DrawText(
+		str4,
+		SCREEN_WIDTH / 2 - w4 / 2,
+		SCREEN_HEIGHT / 2 - total_height + header_size + FONT_SIZE * 3 + 40,
 		FONT_SIZE,
 		rl.RAYWHITE,
 	)
