@@ -11,6 +11,8 @@ FONT_SIZE :: 30
 SCREEN_WIDTH :: 1024
 SCREEN_HEIGHT :: 768
 BLOCK_WIDTH :: 32
+CAMERA_SHAKE_MAGNITUDE :: 5.0
+CAMERA_SHAKE_DURATION :: 15
 
 GRAVITY :: 900
 JUMP_STRENGTH :: 500
@@ -47,6 +49,7 @@ game_state := GameState.MAIN_MENU
 world: []BlockType
 levels: map[GameState]Level
 camera: rl.Camera2D
+camera_shake_duration: f32
 player: Player
 score: i32
 
@@ -120,6 +123,14 @@ process_input :: proc() {
 }
 
 update :: proc() {
+	if camera_shake_duration > 0 {
+		camera.offset.x += f32(rl.GetRandomValue(-CAMERA_SHAKE_MAGNITUDE, CAMERA_SHAKE_MAGNITUDE))
+		camera.offset.y += f32(rl.GetRandomValue(-CAMERA_SHAKE_MAGNITUDE, CAMERA_SHAKE_MAGNITUDE))
+		camera_shake_duration -= 1
+	} else {
+		camera.offset = {SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2}
+	}
+
 	if game_state == .MAIN_MENU || game_state == .GAME_OVER {
 		return
 	}
@@ -129,9 +140,6 @@ update :: proc() {
 	dt := rl.GetFrameTime()
 
 	player.vel.y += GRAVITY * dt
-	// if player.vel.y >= TERMINAL_VELOCITY {
-	// 	player.vel.y = TERMINAL_VELOCITY
-	// }
 	player.pos_px += player.vel * dt
 
 	check_collisions()
@@ -197,6 +205,7 @@ check_collisions :: proc() {
 	   player.pos_px.x > f32(width_in_blocks * BLOCK_WIDTH) - player.size.x ||
 	   player.pos_px.y < 0 ||
 	   player.pos_px.y > f32(height_in_blocks * BLOCK_WIDTH) - player.size.y {
+		camera_shake_duration = CAMERA_SHAKE_DURATION
 		game_state = .GAME_OVER
 		return
 	}
@@ -212,6 +221,7 @@ check_collisions :: proc() {
 				rl.Rectangle{player.pos_px.x, player.pos_px.y, player.size.x, player.size.y},
 				rl.Rectangle{f32(x), f32(y), BLOCK_WIDTH, BLOCK_WIDTH},
 			) {
+				camera_shake_duration = CAMERA_SHAKE_DURATION
 				game_state = .GAME_OVER
 			}
 		}
