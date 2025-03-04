@@ -190,17 +190,18 @@ reset_level :: proc() {
 }
 
 check_collisions :: proc() {
+	height_in_blocks := SCREEN_HEIGHT / BLOCK_WIDTH
+	width_in_blocks := len(world) / height_in_blocks
+
 	if player.pos_px.x < 0 ||
-	   player.pos_px.x > SCREEN_WIDTH - player.size.x ||
+	   player.pos_px.x > f32(width_in_blocks * BLOCK_WIDTH) - player.size.x ||
 	   player.pos_px.y < 0 ||
-	   player.pos_px.y > SCREEN_HEIGHT - player.size.y {
+	   player.pos_px.y > f32(height_in_blocks * BLOCK_WIDTH) - player.size.y {
 		game_state = .GAME_OVER
 		return
 	}
 
 	// TODO:(lukefilewalker) don't iterate over all blocks just for wall blocks
-	height_in_blocks := SCREEN_HEIGHT / BLOCK_WIDTH
-	width_in_blocks := len(world) / height_in_blocks
 	for block, i in world {
 		if block == .WALL {
 			grid_x := i32(i % width_in_blocks)
@@ -302,11 +303,16 @@ draw_game_over :: proc() {
 }
 
 clamp_camera :: proc(vec: rl.Vector2) -> rl.Vector2 {
+	height_in_blocks := SCREEN_HEIGHT / BLOCK_WIDTH
+	width_in_blocks := len(world) / height_in_blocks
+
 	half_window_width := SCREEN_WIDTH / 2.0 / camera.zoom
 	half_window_height := SCREEN_HEIGHT / 2.0 / camera.zoom
+
 	minX: f32 = half_window_width
 	minY: f32 = half_window_height
-	maxX: f32 = SCREEN_WIDTH - half_window_width
+
+	maxX: f32 = f32(width_in_blocks * BLOCK_WIDTH) - half_window_width
 	maxY: f32 = SCREEN_HEIGHT - half_window_height
 
 	res_vec := vec
