@@ -63,40 +63,28 @@ main :: proc() {
 }
 
 setup :: proc() {
-	pw: f32 = BLOCK_WIDTH
-	ph: f32 = BLOCK_WIDTH
-	player = {
-		pos_px = {BLOCK_WIDTH * 2, SCREEN_HEIGHT / 2 - ph / 2},
-		size   = {pw, ph},
-		vel    = {SPEED, 0},
-		colour = {245, 125, 74, 255},
-	}
-
 	camera = {
-		target = player.pos_px,
 		offset = {SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2},
 		zoom   = 1,
 	}
 
-	level1 := Level {
-		speed        = 1,
-		level_length = 2,
-		num_walls    = 5,
-	}
+	reset_level()
 
 	gen_level()
 }
 
 process_input :: proc() {
-	#partial switch game_state {
-	case .MAIN_MENU:
-		if rl.IsKeyPressed(.SPACE) do game_state = .LEVEL1
+	if rl.IsKeyPressed(.SPACE) {
+		#partial switch game_state {
+		case .MAIN_MENU:
+			reset_level()
 
-	case .GAME_OVER:
-		if rl.IsKeyPressed(.SPACE) do game_state = .LEVEL1
+		case .GAME_OVER:
+			reset_level()
 
-	case:
-		if rl.IsKeyPressed(.SPACE) do player.vel += {0, -JUMP_STRENGTH}
+		case:
+			player.vel += {0, -JUMP_STRENGTH}
+		}
 	}
 }
 
@@ -160,6 +148,27 @@ render :: proc() {
 	}
 
 	rl.EndDrawing()
+}
+
+reset_level :: proc() {
+	pw: f32 = BLOCK_WIDTH
+	ph: f32 = BLOCK_WIDTH
+	player = {
+		pos_px = {BLOCK_WIDTH * 2, SCREEN_HEIGHT / 2 - ph / 2},
+		size   = {pw, ph},
+		vel    = {SPEED, 0},
+		colour = {245, 125, 74, 255},
+	}
+
+	camera.target = player.pos_px
+
+	level1 := Level {
+		speed        = 1,
+		level_length = 2,
+		num_walls    = 5,
+	}
+
+	game_state = .LEVEL1
 }
 
 check_collisions :: proc() {
