@@ -12,8 +12,8 @@ SCREEN_WIDTH :: 1024
 SCREEN_HEIGHT :: 768
 BLOCK_WIDTH :: 32
 
-GRAVITY :: 25
-JUMP_STRENGTH :: 800
+GRAVITY :: 900
+JUMP_STRENGTH :: 500
 SPEED :: 200
 
 Player :: struct {
@@ -24,9 +24,10 @@ Player :: struct {
 }
 
 Level :: struct {
-	speed:        f32,
-	level_length: f32,
-	num_walls:    i32,
+	speed:             f32,
+	length_multiplier: i32,
+	num_walls:         i32,
+	hole_size:         i32,
 }
 
 BlockType :: enum {
@@ -43,7 +44,8 @@ GameState :: enum {
 }
 
 game_state := GameState.MAIN_MENU
-level: [32 * 24]BlockType
+world: []BlockType
+levels: map[GameState]Level
 camera: rl.Camera2D
 player: Player
 score: i32
@@ -63,23 +65,52 @@ main :: proc() {
 }
 
 setup :: proc() {
+	pw: f32 = BLOCK_WIDTH
+	ph: f32 = BLOCK_WIDTH
+	player = {
+		pos_px = {BLOCK_WIDTH * 2, SCREEN_HEIGHT / 2 - ph / 2},
+		size   = {pw, ph},
+		vel    = {SPEED, 0},
+		colour = {245, 125, 74, 255},
+	}
+
 	camera = {
 		offset = {SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2},
 		zoom   = 1,
+		target = player.pos_px,
+	}
+
+	levels[.LEVEL1] = Level {
+		speed             = 1,
+		length_multiplier = 2,
+		num_walls         = 5,
+		hole_size         = 7,
+	}
+	levels[.LEVEL2] = Level {
+		speed             = 2,
+		length_multiplier = 4,
+		num_walls         = 8,
+		hole_size         = 5,
+	}
+	levels[.LEVEL3] = Level {
+		speed             = 3,
+		length_multiplier = 6,
+		num_walls         = 12,
+		hole_size         = 3,
 	}
 
 	reset_level()
-
-	gen_level()
 }
 
 process_input :: proc() {
 	if rl.IsKeyPressed(.SPACE) {
 		#partial switch game_state {
 		case .MAIN_MENU:
+			game_state = .LEVEL1
 			reset_level()
 
 		case .GAME_OVER:
+			game_state = .LEVEL1
 			reset_level()
 
 		case:
@@ -97,7 +128,7 @@ update :: proc() {
 
 	dt := rl.GetFrameTime()
 
-	player.vel.y += GRAVITY
+	player.vel.y += GRAVITY * dt
 	// if player.vel.y >= TERMINAL_VELOCITY {
 	// 	player.vel.y = TERMINAL_VELOCITY
 	// }
@@ -113,17 +144,18 @@ render :: proc() {
 	rl.BeginMode2D(camera)
 
 	if game_state >= .GAME_OVER {
+		height_in_blocks := SCREEN_HEIGHT / BLOCK_WIDTH
+		width_in_blocks := len(world) / height_in_blocks
+
 		// Draw level
-		for b, i in level {
-			grid_x := i32(i % (SCREEN_WIDTH / BLOCK_WIDTH))
-			grid_y := i32(i / (SCREEN_WIDTH / BLOCK_WIDTH))
+		for b, i in world {
+			grid_x := i32(i % width_in_blocks)
+			grid_y := i32(i / width_in_blocks)
 			x := grid_x * BLOCK_WIDTH
 			y := grid_y * BLOCK_WIDTH
 
 			if b == .WALL {
 				rl.DrawRectangle(x, y, BLOCK_WIDTH, BLOCK_WIDTH, {77, 101, 180, 255})
-			} else {
-				// rl.DrawRectangle(x, y, BLOCK_WIDTH, BLOCK_WIDTH, {0, 101, 180, 255})
 			}
 
 			rl.DrawRectangleLines(x, y, BLOCK_WIDTH, BLOCK_WIDTH, rl.DARKGRAY)
@@ -144,31 +176,17 @@ render :: proc() {
 		draw_game_over()
 
 	case:
-		draw_ui()
+		draw_game_ui()
 	}
 
 	rl.EndDrawing()
 }
 
 reset_level :: proc() {
-	pw: f32 = BLOCK_WIDTH
-	ph: f32 = BLOCK_WIDTH
-	player = {
-		pos_px = {BLOCK_WIDTH * 2, SCREEN_HEIGHT / 2 - ph / 2},
-		size   = {pw, ph},
-		vel    = {SPEED, 0},
-		colour = {245, 125, 74, 255},
-	}
+	player.pos_px = {BLOCK_WIDTH * 2, SCREEN_HEIGHT / 2 - player.size.y / 2}
+	player.vel = {SPEED, 0}
 
-	camera.target = player.pos_px
-
-	level1 := Level {
-		speed        = 1,
-		level_length = 2,
-		num_walls    = 5,
-	}
-
-	game_state = .LEVEL1
+	gen_level(levels[.LEVEL1])
 }
 
 check_collisions :: proc() {
@@ -181,15 +199,17 @@ check_collisions :: proc() {
 	}
 
 	// TODO:(lukefilewalker) don't iterate over all blocks just for wall blocks
-	for block, i in level {
+	height_in_blocks := SCREEN_HEIGHT / BLOCK_WIDTH
+	width_in_blocks := len(world) / height_in_blocks
+	for block, i in world {
 		if block == .WALL {
-			grid_x := f32(i % (SCREEN_WIDTH / BLOCK_WIDTH))
-			grid_y := f32(i / (SCREEN_WIDTH / BLOCK_WIDTH))
+			grid_x := i32(i % width_in_blocks)
+			grid_y := i32(i / width_in_blocks)
 			x := grid_x * BLOCK_WIDTH
 			y := grid_y * BLOCK_WIDTH
 			if rl.CheckCollisionRecs(
 				rl.Rectangle{player.pos_px.x, player.pos_px.y, player.size.x, player.size.y},
-				rl.Rectangle{x, y, BLOCK_WIDTH, BLOCK_WIDTH},
+				rl.Rectangle{f32(x), f32(y), BLOCK_WIDTH, BLOCK_WIDTH},
 			) {
 				game_state = .GAME_OVER
 			}
@@ -197,24 +217,21 @@ check_collisions :: proc() {
 	}
 }
 
-gen_level :: proc() {
-	level_len := 2
-	// TODO:(lukefilewalker) will increase as teh leëls get harder
-	width_in_blocks: i32 = SCREEN_WIDTH / BLOCK_WIDTH // * level_len
-	num_walls_in_level := 3
-	// TODO:(lukefilewalker) will reduce as teh leëls get harder
-	height_in_blocks: i32 = SCREEN_HEIGHT / BLOCK_WIDTH // * level_len
+gen_level :: proc(level: Level) {
+	width_in_blocks := SCREEN_WIDTH / BLOCK_WIDTH * level.length_multiplier
+	height_in_blocks: i32 = SCREEN_HEIGHT / BLOCK_WIDTH
+	world = make([]BlockType, width_in_blocks * height_in_blocks)
 
-	for i in 0 ..< num_walls_in_level {
-		hole_size: i32 = 5
+	for i in 0 ..< level.num_walls {
+		hole_size := level.hole_size
+		hole_y := rand.int31_max(height_in_blocks - hole_size * 2) + hole_size
 		x := rand.int31_max(width_in_blocks)
-		hole_y := rand.int31_max(height_in_blocks - (hole_size * 2)) + hole_size
 
-		for level[x] == .WALL {
+		for world[x] == .WALL {
 			x = rand.int31_max(width_in_blocks)
 		}
 
-		for y in 0 ..< SCREEN_HEIGHT / BLOCK_WIDTH {
+		for y in 0 ..< height_in_blocks {
 			if i32(y) == hole_y {
 				if hole_size > 1 {
 					hole_y += 1
@@ -222,12 +239,12 @@ gen_level :: proc() {
 				hole_size -= 1
 				continue
 			}
-			level[i32(y) * (SCREEN_WIDTH / BLOCK_WIDTH) + x] = .WALL
+			world[i32(y) * width_in_blocks + x] = .WALL
 		}
 	}
 }
 
-draw_ui :: proc() {
+draw_game_ui :: proc() {
 	rl.DrawText(fmt.ctprintf("Score: %d", score), 20, 20, 20, rl.RAYWHITE)
 }
 
