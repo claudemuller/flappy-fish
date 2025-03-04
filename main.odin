@@ -13,6 +13,7 @@ SCREEN_HEIGHT :: 768
 BLOCK_WIDTH :: 32
 CAMERA_SHAKE_MAGNITUDE :: 5.0
 CAMERA_SHAKE_DURATION :: 15
+MENU_TIMEOUT :: 1
 
 GRAVITY :: 900
 JUMP_STRENGTH :: 500
@@ -39,6 +40,7 @@ BlockType :: enum {
 
 GameState :: enum {
 	MAIN_MENU,
+	WIN_SCREEN,
 	GAME_OVER,
 	LEVEL1,
 	LEVEL2,
@@ -50,6 +52,7 @@ world: []BlockType
 levels: map[GameState]Level
 camera: rl.Camera2D
 camera_shake_duration: f32
+menu_timer: f32
 player: Player
 score: i32
 
@@ -102,7 +105,7 @@ setup :: proc() {
 		hole_size         = 3,
 	}
 
-	reset_level()
+	load_level(.LEVEL1)
 }
 
 process_input :: proc() {
@@ -110,11 +113,11 @@ process_input :: proc() {
 		#partial switch game_state {
 		case .MAIN_MENU:
 			game_state = .LEVEL1
-			reset_level()
+			load_level(.LEVEL1)
 
 		case .GAME_OVER:
 			game_state = .LEVEL1
-			reset_level()
+			load_level(.LEVEL1)
 
 		case:
 			player.vel += {0, -JUMP_STRENGTH}
@@ -135,9 +138,14 @@ update :: proc() {
 		return
 	}
 
-	camera.target = clamp_camera(player.pos_px)
-
 	dt := rl.GetFrameTime()
+
+	if menu_timer > 0 {
+		menu_timer -= dt
+		return
+	}
+
+	camera.target = clamp_camera(player.pos_px)
 
 	player.vel.y += GRAVITY * dt
 	player.pos_px += player.vel * dt
@@ -149,32 +157,13 @@ render :: proc() {
 	rl.BeginDrawing()
 	rl.ClearBackground({50, 51, 83, 255})
 
-	rl.BeginMode2D(camera)
-
 	if game_state >= .GAME_OVER {
-		height_in_blocks := SCREEN_HEIGHT / BLOCK_WIDTH
-		width_in_blocks := len(world) / height_in_blocks
-
-		// Draw level
-		for b, i in world {
-			grid_x := i32(i % width_in_blocks)
-			grid_y := i32(i / width_in_blocks)
-			x := grid_x * BLOCK_WIDTH
-			y := grid_y * BLOCK_WIDTH
-
-			if b == .WALL {
-				rl.DrawRectangle(x, y, BLOCK_WIDTH, BLOCK_WIDTH, {77, 101, 180, 255})
-			}
-
-			rl.DrawRectangleLines(x, y, BLOCK_WIDTH, BLOCK_WIDTH, rl.DARKGRAY)
-			// rl.DrawText(fmt.ctprintf("%d:%d", grid_x, grid_y), x, y, 20, rl.BLACK)
+		if menu_timer > 0 {
+			draw_level_screen()
+		} else {
+			draw_world()
 		}
-
-		// Draw player
-		rl.DrawRectangleV(player.pos_px, player.size, player.colour)
 	}
-
-	rl.EndMode2D()
 
 	#partial switch game_state {
 	case .MAIN_MENU:
@@ -183,6 +172,9 @@ render :: proc() {
 	case .GAME_OVER:
 		draw_game_over()
 
+	case .WIN_SCREEN:
+		draw_win_screen()
+
 	case:
 		draw_game_ui()
 	}
@@ -190,19 +182,56 @@ render :: proc() {
 	rl.EndDrawing()
 }
 
-reset_level :: proc() {
+draw_world :: proc() {
+	rl.BeginMode2D(camera)
+
+	height_in_blocks := SCREEN_HEIGHT / BLOCK_WIDTH
+	width_in_blocks := len(world) / height_in_blocks
+
+	// Draw level
+	for b, i in world {
+		grid_x := i32(i % width_in_blocks)
+		grid_y := i32(i / width_in_blocks)
+		x := grid_x * BLOCK_WIDTH
+		y := grid_y * BLOCK_WIDTH
+
+		if b == .WALL {
+			rl.DrawRectangle(x, y, BLOCK_WIDTH, BLOCK_WIDTH, {77, 101, 180, 255})
+		}
+
+		rl.DrawRectangleLines(x, y, BLOCK_WIDTH, BLOCK_WIDTH, rl.DARKGRAY)
+		// rl.DrawText(fmt.ctprintf("%d:%d", grid_x, grid_y), x, y, 20, rl.BLACK)
+	}
+
+	// Draw player
+	rl.DrawRectangleV(player.pos_px, player.size, player.colour)
+
+	rl.EndMode2D()
+}
+
+load_level :: proc(level: GameState) {
 	player.pos_px = {BLOCK_WIDTH * 2, SCREEN_HEIGHT / 2 - player.size.y / 2}
 	player.vel = {SPEED, 0}
+	menu_timer = MENU_TIMEOUT
 
-	gen_level(levels[.LEVEL1])
+	gen_level(levels[level])
 }
 
 check_collisions :: proc() {
 	height_in_blocks := SCREEN_HEIGHT / BLOCK_WIDTH
 	width_in_blocks := len(world) / height_in_blocks
 
+	if player.pos_px.x > f32(width_in_blocks * BLOCK_WIDTH) - player.size.x {
+		if game_state == .LEVEL3 {
+			game_state = .WIN_SCREEN
+			return
+		}
+
+		load_level(game_state + GameState(1))
+		return
+	}
+
 	if player.pos_px.x < 0 ||
-	   player.pos_px.x > f32(width_in_blocks * BLOCK_WIDTH) - player.size.x ||
 	   player.pos_px.y < 0 ||
 	   player.pos_px.y > f32(height_in_blocks * BLOCK_WIDTH) - player.size.y {
 		camera_shake_duration = CAMERA_SHAKE_DURATION
@@ -236,7 +265,7 @@ gen_level :: proc(level: Level) {
 	for i in 0 ..< level.num_walls {
 		hole_size := level.hole_size
 		hole_y := rand.int31_max(height_in_blocks - hole_size * 2) + hole_size
-		x := rand.int31_max(width_in_blocks)
+		x := rand.int31_max(width_in_blocks - 10) + 10
 
 		for world[x] == .WALL {
 			x = rand.int31_max(width_in_blocks)
@@ -255,16 +284,35 @@ gen_level :: proc(level: Level) {
 	}
 }
 
+draw_level_screen :: proc() {
+	str := fmt.ctprintf("Level %d", int(game_state) - 2)
+	w := rl.MeasureText(str, FONT_SIZE)
+	rl.DrawText(
+		str,
+		SCREEN_WIDTH / 2 - w / 2,
+		SCREEN_HEIGHT / 2 - FONT_SIZE / 2,
+		FONT_SIZE,
+		rl.RAYWHITE,
+	)
+}
+
 draw_game_ui :: proc() {
 	rl.DrawText(fmt.ctprintf("Score: %d", score), 20, 20, 20, rl.RAYWHITE)
+	rl.DrawText(
+		fmt.ctprintf("Level: %d", int(game_state) - 2),
+		SCREEN_WIDTH - 100,
+		20,
+		20,
+		rl.RAYWHITE,
+	)
 }
 
 draw_main_menu :: proc() {
-	play_str := fmt.ctprint("Press <space> to start playing")
-	str_w := rl.MeasureText(play_str, FONT_SIZE)
+	str := fmt.ctprint("Press <space> to start playing")
+	w := rl.MeasureText(str, FONT_SIZE)
 	rl.DrawText(
-		play_str,
-		SCREEN_WIDTH / 2 - str_w / 2,
+		str,
+		SCREEN_WIDTH / 2 - w / 2,
 		SCREEN_HEIGHT / 2 - FONT_SIZE / 2,
 		FONT_SIZE,
 		rl.RAYWHITE,
@@ -307,6 +355,18 @@ draw_game_over :: proc() {
 		str4,
 		SCREEN_WIDTH / 2 - w4 / 2,
 		SCREEN_HEIGHT / 2 - total_height + header_size + FONT_SIZE * 3 + 40,
+		FONT_SIZE,
+		rl.RAYWHITE,
+	)
+}
+
+draw_win_screen :: proc() {
+	str := fmt.ctprint("You win with a score of %d", score)
+	w := rl.MeasureText(str, FONT_SIZE)
+	rl.DrawText(
+		str,
+		SCREEN_WIDTH / 2 - w / 2,
+		SCREEN_HEIGHT / 2 - FONT_SIZE / 2,
 		FONT_SIZE,
 		rl.RAYWHITE,
 	)
